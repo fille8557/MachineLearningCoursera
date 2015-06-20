@@ -1,0 +1,104 @@
+---
+title: "Machine learning coursera project"
+author: "fille8557 (github username)"
+date: "15 Jun 2015"
+output: html_document
+---
+
+###Introduction  
+
+This is a machine learning alogrithm using the weight lifting exercises dataset from the following source: http://groupware.les.inf.puc-rio.br/har.  
+
+  
+###### (Source: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.)
+
+
+  
+
+  The alogrithm attempts to ascertain whether an exercise was completed correctly (classe = A) or incorrectly (classe = B to E).  
+
+### Loading and analysing data
+  
+  First, I loaded the training data and did some exploratory analysis (pairs plots for a few different randomly selected variables). There didn't seem to be any immediately obviously related variables. 160 variables is a fair number of variables to handle, so I looked for a way to reduce or combine variables.  
+
+  
+  There seemed to be a lot of NAs in the dataset (about 61%). Therefore, some of the variables are probably not going to be very useful in a model, if most of the values for that variable are NA or "#DIV/0!".  
+  
+  So I decided to remove the columns with more than 19200 NAs (97.8% of the observations) from the dataset. This left me with 60 variables (including the outcome variable classe).  
+  
+```{r eval=FALSE}
+library(caret)
+library(randomForest)
+
+training <- read.csv("pml-training.csv", sep=",", na.strings=c("NA", "#DIV/0!", ""), header=TRUE)
+
+pairs(classe~avg_pitch_forearm+accel_dumbbell_x+skewness_pitch_dumbbell, data=training)
+pairs(classe~total_accel_belt+roll_forearm+accel_arm_x, data=training)
+
+dim(training)
+sum(is.na(training))/(19622*160)
+
+training2 <- training[, colSums(is.na(training)) < 19200]
+
+```
+.  
+  
+  Also, since the training data set is very large, I only used 20% of it to build my model, leaving 40% for testing and 40% for validation.  
+
+  
+  Since the first 7 variables are for identity, it didn't make sense to include them in the prediction model. We want to be able to predict if the exercise is done correctly or not, based on the actions of the person, not their identity. I removed these colums as well from the data set, leaving 52 variables to predict with.  
+  
+```{r eval=FALSE}
+set.seed(12545)
+inTrain <- createDataPartition(y=training$classe, p=.2, list=FALSE)
+newtraining <- training2[inTrain,]
+newtesting <- training2[-inTrain,]
+
+inTest <- createDataPartition(y=newtesting$classe, p=.5, list=FALSE)
+newtesting2 <- newtesting[inTest,]
+newvalidation <- newtesting[-inTest,]
+
+training3 <- newtraining[,8:60]
+```
+.  
+
+### Model selection  
+
+  I used a random forest model with 3 fold cross validation. I tried a 5 fold cross validation as well, but there was not much difference in the accuracy. A boosted with trees model (gbm) had a lower accuracy than the random forest model.  
+  
+```{r eval=FALSE}
+fitControl <- trainControl(method="cv", 3)
+fitControl5 <- trainControl(method="cv", 5)
+
+modFit <- train(classe~., data=training3, method="rf", trControl=fitControl, prox=TRUE)
+
+modFit5 <- train(classe~., data=training3, method="rf", trControl=fitControl5, prox=TRUE)
+
+modGBM <- train(classe~., data=training3, method="gbm", verbose=FALSE)
+
+```
+.  
+
+### Model testing
+  These three models were used on the testing set (40% of the original training data set). There was no difference between the 3- and 5-fold cross validated random forest models, with both had accuracies of 96.7%. These were better than the gbm model that had only 95% accuracy.  
+```{r eval=FALSE}
+
+testPred <- predict(modFit, newtesting2[,8:60])
+confusionMatrix(testPred, newtesting2$classe)
+
+testPred5 <- predict(modFit5, newtesting2[,8:60])
+confusionMatrix(testPred5, newtesting2$classe)
+
+testPredGBM <- predict(modGBM, newtesting2[,8:60])
+confusionMatrix(testPredGBM, newtesting2$classe)
+```
+.  
+
+### Model validation
+  The 3-fold CV random forest model was applied to the validation data (40% of the original training data set). The accurarcy of this model on the validation set is 97.5%, giving us a very small estimated out of sample error.  
+
+```{r eval=FALSE}
+validPred <- predict(modFit, newvalidation[,8:60])
+confusionMatrix(validPred, newvalidation$classe)
+```
+.  
